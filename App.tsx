@@ -332,15 +332,14 @@ export default function App() {
         newPixels.add(`${shape.p.x},${shape.p.y}`);
       } else if (shape.type === 'line') {
         let linePoints: Point[];
+        linePoints = bresenhamLine(shape.p1.x, shape.p1.y, shape.p2.x, shape.p2.y);
+        
         if (clipRect) {
-          const clipped = cohenSutherland(shape.p1.x, shape.p1.y, shape.p2.x, shape.p2.y, clipRect.xmin, clipRect.ymin, clipRect.xmax, clipRect.ymax);
-          if (clipped) {
-            linePoints = bresenhamLine(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
-          } else {
-            linePoints = [];
-          }
-        } else {
-          linePoints = bresenhamLine(shape.p1.x, shape.p1.y, shape.p2.x, shape.p2.y);
+          // Filter pixels that are within the clipping window instead of clipping the line directly
+          linePoints = linePoints.filter(p => 
+            p.x >= clipRect.xmin && p.x <= clipRect.xmax && 
+            p.y >= clipRect.ymin && p.y <= clipRect.ymax
+          );
         }
         linePoints.forEach(p => newPixels.add(`${p.x},${p.y}`));
       } else if (shape.type === 'circle') {
@@ -357,28 +356,38 @@ export default function App() {
           const startVertex = shape.vertices[i];
           const endVertex = shape.vertices[(i + 1) % shape.vertices.length];
           let linePoints: Point[];
+          linePoints = bresenhamLine(startVertex.x, startVertex.y, endVertex.x, endVertex.y);
+          
           if (clipRect) {
-            const clipped = cohenSutherland(startVertex.x, startVertex.y, endVertex.x, endVertex.y, clipRect.xmin, clipRect.ymin, clipRect.xmax, clipRect.ymax);
-            if (clipped) {
-              linePoints = bresenhamLine(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
-            } else {
-              linePoints = [];
-            }
-          } else {
-            linePoints = bresenhamLine(startVertex.x, startVertex.y, endVertex.x, endVertex.y);
+            // Filter pixels that are within the clipping window instead of clipping the line directly
+            linePoints = linePoints.filter(p => 
+              p.x >= clipRect.xmin && p.x <= clipRect.xmax && 
+              p.y >= clipRect.ymin && p.y <= clipRect.ymax
+            );
           }
           linePoints.forEach(p => newPixels.add(`${p.x},${p.y}`));
         }
       } else if (shape.type === 'polygon') {
-        let vertices = shape.vertices;
-        if (clipRect) {
-          vertices = sutherlandHodgman(vertices, clipRect.xmin, clipRect.ymin, clipRect.xmax, clipRect.ymax);
-        }
+        // Always draw the complete polygon first, then filter pixels if clipping is enabled
+        const vertices = shape.vertices;
+        const allPolygonPoints: Point[] = [];
+        
         for (let i = 0; i < vertices.length; i++) {
           const startVertex = vertices[i];
           const endVertex = vertices[(i + 1) % vertices.length];
           const linePoints = bresenhamLine(startVertex.x, startVertex.y, endVertex.x, endVertex.y);
-          linePoints.forEach(p => newPixels.add(`${p.x},${p.y}`));
+          allPolygonPoints.push(...linePoints);
+        }
+        
+        if (clipRect) {
+          // Filter pixels that are within the clipping window instead of clipping the polygon directly
+          const filteredPoints = allPolygonPoints.filter(p => 
+            p.x >= clipRect.xmin && p.x <= clipRect.xmax && 
+            p.y >= clipRect.ymin && p.y <= clipRect.ymax
+          );
+          filteredPoints.forEach(p => newPixels.add(`${p.x},${p.y}`));
+        } else {
+          allPolygonPoints.forEach(p => newPixels.add(`${p.x},${p.y}`));
         }
       }
     });
