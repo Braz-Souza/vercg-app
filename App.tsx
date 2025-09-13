@@ -28,8 +28,18 @@ import {
   scaleBezier, 
   isPointInsideCircle, 
   isPointInsidePolygon, 
-  isPointNearLine 
+  isPointNearLine
 } from './src/utils/transformations';
+import {
+  Point3D,
+  ProjectionType,
+  orthogonalProjection,
+  projectPoint3DArray,
+  Cube3D,
+  generateCubeVertices,
+  projectCube,
+  getProjectedCubeLines
+} from './src/utils/orthogonalProjection';
 
 const GRID_SIZE = 20;
 
@@ -47,7 +57,7 @@ type Shape =
   | { type: 'polygon', vertices: Point[] }
   | { type: 'pixel', p: Point };
 
-type Mode = 'pixel' | 'bresenham' | 'circle' | 'ellipse' | 'bezier' | 'polyline' | 'recursive_fill' | 'scanline_fill' | 'line_clipping' | 'polygon_clipping' | 'transformations';
+type Mode = 'pixel' | 'bresenham' | 'circle' | 'ellipse' | 'bezier' | 'polyline' | 'recursive_fill' | 'scanline_fill' | 'line_clipping' | 'polygon_clipping' | 'transformations' | 'orthogonal_projection';
 
 export default function App() {
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -107,12 +117,64 @@ export default function App() {
   });
   const [selectedShapeIndex, setSelectedShapeIndex] = useState<number | null>(null);
 
+  const [cubeVertices, setCubeVertices] = useState({
+    v1x: '6', v1y: '6', v1z: '6',   // Base inferior esquerda traseira
+    v2x: '12', v2y: '6', v2z: '6',  // Base inferior direita traseira
+    v3x: '12', v3y: '12', v3z: '6', // Base inferior direita frontal
+    v4x: '6', v4y: '12', v4z: '6',  // Base inferior esquerda frontal
+    v5x: '6', v5y: '6', v5z: '12',  // Base superior esquerda traseira
+    v6x: '12', v6y: '6', v6z: '12', // Base superior direita traseira
+    v7x: '12', v7y: '12', v7z: '12',// Base superior direita frontal
+    v8x: '6', v8y: '12', v8z: '12'  // Base superior esquerda frontal
+  });
+
   const handleClippingWindowChange = (field: keyof typeof clippingWindow, value: string) => {
     setClippingWindow(prev => ({ ...prev, [field]: value }));
   };
 
   const handleTransformationInputChange = (field: keyof typeof transformationInputs, value: string) => {
     setTransformationInputs(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCubeVertexChange = (field: keyof typeof cubeVertices, value: string) => {
+    setCubeVertices(prev => ({ ...prev, [field]: value }));
+  };
+
+  const [projectionType, setProjectionType] = useState<ProjectionType>(ProjectionType.FRONT);
+
+  const drawCubeFromVertices = () => {
+    const vertices3D: Point3D[] = [];
+    
+    for (let i = 1; i <= 8; i++) {
+      const x = parseFloat(cubeVertices[`v${i}x` as keyof typeof cubeVertices]);
+      const y = parseFloat(cubeVertices[`v${i}y` as keyof typeof cubeVertices]);
+      const z = parseFloat(cubeVertices[`v${i}z` as keyof typeof cubeVertices]);
+      
+      if (isNaN(x) || isNaN(y) || isNaN(z)) return;
+      
+      vertices3D.push({ x, y, z });
+    }
+    
+    // Projetar os vértices 3D para 2D usando a projeção selecionada
+    const vertices2D = vertices3D.map(vertex => {
+      const projected = orthogonalProjection(vertex, projectionType);
+      return { x: projected.x, y: GRID_SIZE - 1 - projected.y };
+    });
+    
+    // Adicionar as linhas que conectam os vértices do cubo
+    const cubeEdges = [
+      [0, 1], [1, 2], [2, 3], [3, 0], // Base inferior
+      [4, 5], [5, 6], [6, 7], [7, 4], // Base superior
+      [0, 4], [1, 5], [2, 6], [3, 7]  // Conexões verticais
+    ];
+    
+    cubeEdges.forEach(([start, end]) => {
+      addShape({ 
+        type: 'line', 
+        p1: vertices2D[start], 
+        p2: vertices2D[end] 
+      });
+    });
   };
 
   const applyRotation = () => {
@@ -859,6 +921,9 @@ export default function App() {
             <TouchableOpacity style={[styles.sidebarItem, mode === 'transformations' && styles.sidebarItemActive]} onPress={() => selectMode('transformations')}>
               <Text style={[styles.sidebarItemText, mode === 'transformations' && styles.sidebarItemTextActive]}>Transformações</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.sidebarItem, mode === 'orthogonal_projection' && styles.sidebarItemActive]} onPress={() => selectMode('orthogonal_projection')}>
+              <Text style={[styles.sidebarItemText, mode === 'orthogonal_projection' && styles.sidebarItemTextActive]}>Projeções Ortogonais</Text>
+            </TouchableOpacity>
           </ScrollView>
         </Animated.View>
 
@@ -1194,6 +1259,296 @@ export default function App() {
                 </View>
               </>
             )}
+
+            {mode === 'orthogonal_projection' && (
+              <>
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Projeções Ortogonais</Text>
+                <Text variant="bodySmall" style={styles.instructionText}>
+                  Configure os 8 vértices do cubo (coordenadas 3D).
+                </Text>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Tipo de Projeção</Text>
+                <View style={styles.inputRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.projectionButton,
+                      projectionType === ProjectionType.FRONT && styles.projectionButtonActive
+                    ]}
+                    onPress={() => setProjectionType(ProjectionType.FRONT)}
+                  >
+                    <Text style={[
+                      styles.projectionButtonText,
+                      projectionType === ProjectionType.FRONT && styles.projectionButtonTextActive
+                    ]}>
+                      Frontal
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.projectionButton,
+                      projectionType === ProjectionType.TOP && styles.projectionButtonActive
+                    ]}
+                    onPress={() => setProjectionType(ProjectionType.TOP)}
+                  >
+                    <Text style={[
+                      styles.projectionButtonText,
+                      projectionType === ProjectionType.TOP && styles.projectionButtonTextActive
+                    ]}>
+                      Superior
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.projectionButton,
+                      projectionType === ProjectionType.SIDE && styles.projectionButtonActive
+                    ]}
+                    onPress={() => setProjectionType(ProjectionType.SIDE)}
+                  >
+                    <Text style={[
+                      styles.projectionButtonText,
+                      projectionType === ProjectionType.SIDE && styles.projectionButtonTextActive
+                    ]}>
+                      Lateral
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 1</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X1" 
+                    value={cubeVertices.v1x} 
+                    onChangeText={v => handleCubeVertexChange('v1x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y1" 
+                    value={cubeVertices.v1y} 
+                    onChangeText={v => handleCubeVertexChange('v1y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z1" 
+                    value={cubeVertices.v1z} 
+                    onChangeText={v => handleCubeVertexChange('v1z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 2</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X2" 
+                    value={cubeVertices.v2x} 
+                    onChangeText={v => handleCubeVertexChange('v2x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y2" 
+                    value={cubeVertices.v2y} 
+                    onChangeText={v => handleCubeVertexChange('v2y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z2" 
+                    value={cubeVertices.v2z} 
+                    onChangeText={v => handleCubeVertexChange('v2z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 3</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X3" 
+                    value={cubeVertices.v3x} 
+                    onChangeText={v => handleCubeVertexChange('v3x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y3" 
+                    value={cubeVertices.v3y} 
+                    onChangeText={v => handleCubeVertexChange('v3y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z3" 
+                    value={cubeVertices.v3z} 
+                    onChangeText={v => handleCubeVertexChange('v3z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 4</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X4" 
+                    value={cubeVertices.v4x} 
+                    onChangeText={v => handleCubeVertexChange('v4x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y4" 
+                    value={cubeVertices.v4y} 
+                    onChangeText={v => handleCubeVertexChange('v4y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z4" 
+                    value={cubeVertices.v4z} 
+                    onChangeText={v => handleCubeVertexChange('v4z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 5</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X5" 
+                    value={cubeVertices.v5x} 
+                    onChangeText={v => handleCubeVertexChange('v5x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y5" 
+                    value={cubeVertices.v5y} 
+                    onChangeText={v => handleCubeVertexChange('v5y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z5" 
+                    value={cubeVertices.v5z} 
+                    onChangeText={v => handleCubeVertexChange('v5z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 6</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X6" 
+                    value={cubeVertices.v6x} 
+                    onChangeText={v => handleCubeVertexChange('v6x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y6" 
+                    value={cubeVertices.v6y} 
+                    onChangeText={v => handleCubeVertexChange('v6y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z6" 
+                    value={cubeVertices.v6z} 
+                    onChangeText={v => handleCubeVertexChange('v6z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 7</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X7" 
+                    value={cubeVertices.v7x} 
+                    onChangeText={v => handleCubeVertexChange('v7x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y7" 
+                    value={cubeVertices.v7y} 
+                    onChangeText={v => handleCubeVertexChange('v7y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z7" 
+                    value={cubeVertices.v7z} 
+                    onChangeText={v => handleCubeVertexChange('v7z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <Text variant="bodyMedium" style={styles.sectionTitle}>Vértice 8</Text>
+                <View style={styles.inputRow}>
+                  <TextInput 
+                    label="X8" 
+                    value={cubeVertices.v8x} 
+                    onChangeText={v => handleCubeVertexChange('v8x', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Y8" 
+                    value={cubeVertices.v8y} 
+                    onChangeText={v => handleCubeVertexChange('v8y', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                  <TextInput 
+                    label="Z8" 
+                    value={cubeVertices.v8z} 
+                    onChangeText={v => handleCubeVertexChange('v8z', v)} 
+                    keyboardType="numeric" 
+                    style={styles.input} 
+                    mode="outlined" 
+                  />
+                </View>
+                
+                <View style={styles.buttonRow}>
+                  <Button mode="contained" onPress={drawCubeFromVertices} style={styles.button}>
+                    Desenhar Cubo
+                  </Button>
+                  <Button mode="outlined" onPress={clearGrid} style={styles.button}>
+                    Limpar Grid
+                  </Button>
+                </View>
+              </>
+            )}
           </View>
 
             <Text variant="bodyMedium">
@@ -1303,4 +1658,28 @@ const styles = StyleSheet.create({
   verticesContainer: { backgroundColor: '#f9f9f9', padding: 8, borderRadius: 4, marginBottom: 8 },
   vertexText: { color: '#333', marginBottom: 2 },
   instructionText: { textAlign: 'center', color: '#666', fontStyle: 'italic', marginBottom: 12 },
+  projectionButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  projectionButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#1976D2',
+  },
+  projectionButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  projectionButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
 });
