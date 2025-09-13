@@ -50,10 +50,19 @@ function onePointPerspective(point3D: Point3D, viewerDistance: number): Point {
 }
 
 function twoPointPerspective(point3D: Point3D, viewerDistance: number): Point {
-  const scaleX = viewerDistance / (viewerDistance + point3D.z);
+  // Dois pontos de fuga: um para X e outro para Z
+  const vanishingPointDistance = viewerDistance * 2;
+  
+  // Aplicar perspectiva em X (ponto de fuga à direita)
+  const scaleX = vanishingPointDistance / (vanishingPointDistance + point3D.z + point3D.x * 0.3);
+  
+  // Aplicar perspectiva em Z (ponto de fuga no fundo)
+  const scaleZ = viewerDistance / (viewerDistance + point3D.z);
+  
+  // Y mantém a escala básica da perspectiva
   const scaleY = viewerDistance / (viewerDistance + point3D.z);
   
-  const perspectiveX = point3D.x * scaleX;
+  const perspectiveX = point3D.x * scaleX + point3D.z * Math.cos(Math.PI / 4) * 0.5;
   const perspectiveY = point3D.y * scaleY;
   
   return {
@@ -64,10 +73,21 @@ function twoPointPerspective(point3D: Point3D, viewerDistance: number): Point {
 
 function threePointPerspective(point3D: Point3D, viewerDistance: number, fov: number): Point {
   const fovRad = (fov * Math.PI) / 180;
-  const scale = viewerDistance / (viewerDistance + point3D.z);
   
-  const perspectiveX = point3D.x * scale;
-  const perspectiveY = point3D.y * scale * Math.cos(fovRad);
+  // Três pontos de fuga: X (horizontal), Y (vertical), Z (profundidade)
+  const vanishingDistanceH = viewerDistance * 1.5; // Ponto de fuga horizontal
+  const vanishingDistanceV = viewerDistance * 2.0; // Ponto de fuga vertical
+  const vanishingDistanceD = viewerDistance;       // Ponto de fuga de profundidade
+  
+  // Aplicar perspectiva para cada eixo com seu próprio ponto de fuga
+  const scaleX = vanishingDistanceH / (vanishingDistanceH + point3D.z + point3D.x * 0.2);
+  const scaleY = vanishingDistanceV / (vanishingDistanceV + point3D.z + Math.abs(point3D.y) * 0.3);
+  const scaleZ = vanishingDistanceD / (vanishingDistanceD + point3D.z);
+  
+  // Aplicar transformações com influência dos três eixos
+  const perspectiveX = point3D.x * scaleX + point3D.z * Math.cos(fovRad) * 0.3;
+  const perspectiveY = point3D.y * scaleY + point3D.z * Math.sin(fovRad) * 0.2 + 
+                       (point3D.y > 10 ? -point3D.y * 0.1 : point3D.y * 0.1);
   
   return {
     x: Math.round(perspectiveX),

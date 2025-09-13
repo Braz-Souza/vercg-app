@@ -138,14 +138,14 @@ export default function App() {
   const [selectedShapeIndex, setSelectedShapeIndex] = useState<number | null>(null);
 
   const [cubeVertices, setCubeVertices] = useState({
-    v1x: '6', v1y: '6', v1z: '6',   // Base inferior esquerda traseira
-    v2x: '12', v2y: '6', v2z: '6',  // Base inferior direita traseira
-    v3x: '12', v3y: '12', v3z: '6', // Base inferior direita frontal
-    v4x: '6', v4y: '12', v4z: '6',  // Base inferior esquerda frontal
-    v5x: '6', v5y: '6', v5z: '12',  // Base superior esquerda traseira
-    v6x: '12', v6y: '6', v6z: '12', // Base superior direita traseira
-    v7x: '12', v7y: '12', v7z: '12',// Base superior direita frontal
-    v8x: '6', v8y: '12', v8z: '12'  // Base superior esquerda frontal
+    v1x: '5', v1y: '5', v1z: '0',   // Base inferior esquerda traseira
+    v2x: '15', v2y: '5', v2z: '0',  // Base inferior direita traseira
+    v3x: '15', v3y: '15', v3z: '0', // Base inferior direita frontal
+    v4x: '5', v4y: '15', v4z: '0',  // Base inferior esquerda frontal
+    v5x: '5', v5y: '5', v5z: '15',  // Base superior esquerda traseira
+    v6x: '15', v6y: '5', v6z: '15', // Base superior direita traseira
+    v7x: '15', v7y: '15', v7z: '15',// Base superior direita frontal
+    v8x: '5', v8y: '15', v8z: '15'  // Base superior esquerda frontal
   });
 
   const handleClippingWindowChange = (field: keyof typeof clippingWindow, value: string) => {
